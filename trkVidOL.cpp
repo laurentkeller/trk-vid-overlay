@@ -2,6 +2,7 @@
 #include <string>
 #include <cmath>
 #include <deque>
+#include <algorithm>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -9,7 +10,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/video.hpp>
 
-#include "utils/tags.h"
+#include "utils/tags3.h"
 #include "utils/datfile.h"
 
 using namespace cv;
@@ -18,10 +19,11 @@ using namespace std;
 const int tl = 10; // Length of the trajectory printed in the video
 
 const char* params
-        = "{ help h   | | Print usage }"
-          "{ trkVid v | | Path to a tracking video }"
-          "{ fDat d   | | Path to a .dat file }"
-          "{ fTags t  | | Path to a .tags file }";
+        = "{ help h       | | Print usage }"
+          "{ trkVid v     | | Path to a tracking video }"
+          "{ fDat d       | | Path to a .dat file }"
+          "{ fTags t      | | Path to a .tags file }"
+          "{ fInteract i  | | Path to an interaction (.txt) file }";
 
 int main(int argc, char** argv ) {
         CommandLineParser parser(argc, argv, params);
@@ -43,12 +45,30 @@ int main(int argc, char** argv ) {
                 cout << "Could not open the output video for write" << endl;
                 return -1;
         }
-        DatFile dat;
-        if (!dat.exists(parser.get<String>("fDat"))) {
-                cerr << "Dat file does not exist" << endl;
+
+        DatFile fdat;
+        if (!fdat.exists(parser.get<String>("fDat"))) {
+                cerr << "fdat file does not exist" << endl;
                 return 1;
         }
-        dat.open(parser.get<String>("fDat"), true);
+        fdat.open(parser.get<String>("fDat"), true);
+
+        TagsFile ftag;
+        string fname_s = parser.get<String>("fTags");
+        char fname_c[fname_s.size() + 1];
+        strcpy(fname_c, fname_s.c_str());
+        ftag.read_file(fname_c);
+
+        int frameOfDeath[1024];
+        for (int i = 0; i < 1024; i++) {
+                frameOfDeath[i] = INT_MAX;
+        }
+
+        for (int i = 0; i < tag_count; i++) {
+                if (ftag.get_state(i) && ftag.get_death(i) > 0) {
+                        frameOfDeath[ftag.get_tag(i)] = ftag.get_death(i);
+                }
+        }
 
         framerec datFrame;
         deque<framerec> qDatFrames;
@@ -57,13 +77,13 @@ int main(int argc, char** argv ) {
         double scW = (capture.get(CAP_PROP_FRAME_WIDTH)) / ((double) IMAGE_WIDTH);
         double scH = (capture.get(CAP_PROP_FRAME_HEIGHT)) / ((double) IMAGE_HEIGHT);
 
-        dat.read_frame(datFrame);
+        fdat.read_frame(datFrame);
         capture >> vidFrame;
 
-        int queenId = 224;
+        int queenId = 665;
         double hil = 5.0; // Heading indicator length
 
-        //namedWindow("Current frame", WINDOW_AUTOSIZE);
+        namedWindow("Current frame", WINDOW_AUTOSIZE);
         do {
                 if (datFrame.frame > 964970) {
                         capture >> vidFrame;
@@ -76,37 +96,48 @@ int main(int argc, char** argv ) {
                         for (int tagNo = 0; tagNo < tag_count; tagNo++) {
                                 if (datFrame.tags[tagNo].x >= 0) {
                                         // Draw the trajectory first
+                                        double xHead = -1.0;
+                                        double xTail = -1.0;
+                                        double yHead = -1.0;
+                                        double yTail = -1.0;
                                         for (int i = 0; i < tl; i++) {
                                                 if (i > qDatFrames.size() - 1) {
                                                         break;
                                                 }
                                                 if (qDatFrames.at(i).tags[tagNo].x >= 0) {
-                                                        double x = (double)qDatFrames.at(i).tags[tagNo].x * scH;
-                                                        double y = (double)qDatFrames.at(i).tags[tagNo].y * scW;
-                                                        circle(vidFrame, Point(x, y), 2, Scalar(255,255,0), 2);
+                                                        xTail = xHead;
+                                                        yTail = yHead;
+                                                        xHead = (double)qDatFrames.at(i).tags[tagNo].x * scH;
+                                                        yHead = (double)qDatFrames.at(i).tags[tagNo].y * scW;
+                                                        if (xTail > -1.0) {
+                                                                line(vidFrame, Point(xHead, yHead), Point(xTail, yTail), Scalar(255, 255, 0), 1, LINE_8);
+                                                        }
                                                 }
                                         }
 
                                         // Now draw everything else
                                         double x = (double)datFrame.tags[tagNo].x * scH;
                                         double y = (double)datFrame.tags[tagNo].y * scW;
-                                        string idString = to_string(tagNo);
-                                        if (tagNo == queenId) {
+                                        string idString = to_string(tag_list[tagNo]);
+                                        if (tag_list[tagNo] == queenId) {
                                                 circle(vidFrame, Point(x, y), 2, Scalar(0,255,255), 2);
                                         } else {
-
-                                                circle(vidFrame, Point(x, y), 2, Scalar(0,0,255), 2);
+                                                if (datFrame.frame < frameOfDeath[tag_list[tagNo]]) {
+                                                        circle(vidFrame, Point(x, y), 2, Scalar(0,0,255), 2);
+                                                } else {
+                                                        circle(vidFrame, Point(x, y), 2, Scalar(255,0,255), 2);
+                                                }
                                         }
                                         putText(vidFrame, idString, Point(x + 4.0, y + 4.0), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, Scalar(0,255,0), 1, LINE_8, false);
                                         line(vidFrame, Point(x, y), Point(x + hil * cos((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0), y + hil * sin((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0)), Scalar(255, 0, 0), 1, LINE_8);
                                 }
                         }
                         outputVid << vidFrame;
-                        //imshow("Current frame", vidFrame);
-                        //waitKey(1000);
+                        imshow("Current frame", vidFrame);
+                        waitKey(10);
                 }
 
-        } while (!vidFrame.empty() && dat.read_frame(datFrame));
+        } while (!vidFrame.empty() && fdat.read_frame(datFrame));
 
         return 0;
 }
