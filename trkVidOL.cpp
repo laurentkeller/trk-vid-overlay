@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <cmath>
+#include <vector>
 #include <deque>
 #include <algorithm>
 #include <opencv2/opencv.hpp>
@@ -23,13 +25,148 @@ const char* params
           "{ trkVid v     | | Path to a tracking video }"
           "{ fDat d       | | Path to a .dat file }"
           "{ fTags t      | | Path to a .tags file }"
-          "{ fInteract i  | | Path to an interaction (.txt) file }";
+          "{ fInteract i  | | Path to an interaction (.txt) file }"
+          "{ show s       | | Show video preview }";
+
+// structure of an interaction
+struct data {
+        double time_start;
+        double time_stop;
+        uint32_t frame_start;       // frame of interaction
+        uint32_t frame_stop;        // frame of end of interaction (filled only during filtering)
+        uint16_t box;
+        //coor ant 1
+        uint16_t x1;
+        uint16_t y1;
+        int16_t a1;
+        // coor ant 2
+        uint16_t x2;
+        uint16_t y2;
+        int16_t a2;
+        int det;
+        int direction;     // direction of interaction (1: ant1 interacts, 2: ant2 interacts, 3:both ants interact);
+};
+
+// INteraction event
+struct event {
+        uint16_t tag1;
+        uint16_t tag2;
+        data d;
+        char s;       // state of interaction: long, blinking
+};
+
+typedef vector <data> interactions;
+typedef vector <vector <int> > matrice;
+
+// convert a tag in the corresponding index of the tag_list table
+bool find_idx(const int tag, int& idx){
+        int i(0);
+        do {
+                if (tag == tag_list[i]) {
+                        idx = i;
+                        return true;
+                }
+                i++;
+        } while(idx == -1 && i<tag_count);
+        return false;
+}
+
+// function to compare elements of vector
+bool cmp(const event& a, const event& b){
+        return a.d.frame_start < b.d.frame_start;
+}
+
+/** void read_interaction_file(char* filename, vector <vector <interactions> >& i_table)
+ * \brief Opens input file with list of interactions (expected format is frame,box,IDant1,IDant2,x1,y1,a1,x2,y2,a2)
+ *		reads them into a 3 dimensional vector
+ * \param filename Name of the input file to read
+ * \param i_table Table of interactions to fill
+ */
+void read_interaction_file(string filename, vector <vector <interactions> >& i_table){
+        ifstream f;
+        f.open(filename.c_str());
+        if (!f.is_open()) {
+                cerr << "CANNOT_OPEN_FILE " << filename << endl;
+
+        }
+
+        string s;
+        getline(f,s);
+        while (!f.eof()) {
+                getline(f,s);
+                stringstream ss;
+                ss.str(s);
+                data temp;
+                memset(&temp, 0, sizeof(temp));
+                temp.frame_stop = 0;
+                if (!ss.fail()) {
+                        int tag1;
+                        ss >> tag1;
+                        ss.ignore(1,',');
+                        int tag2;
+                        ss >> tag2;
+                        ss.ignore(1,',');
+                        ss>>temp.frame_start;
+                        ss.ignore(1,',');
+                        ss>>temp.frame_stop;
+                        ss.ignore(1,',');
+                        ss>>temp.time_start;
+                        ss.ignore(1,',');
+                        ss>>temp.time_stop;
+                        ss.ignore(1,',');
+                        ss>>temp.box;
+                        ss.ignore(1,',');
+                        ss>>temp.x1;
+                        ss.ignore(1,',');
+                        ss>>temp.y1;
+                        ss.ignore(1,',');
+                        ss>>temp.a1;
+                        ss.ignore(1,',');
+                        ss>>temp.x2;
+                        ss.ignore(1,',');
+                        ss>>temp.y2;
+                        ss.ignore(1,',');
+                        ss>>temp.a2;
+                        ss.ignore(1,',');
+                        ss>>temp.direction;
+                        ss.ignore(1,',');
+                        ss>>temp.det;
+
+                        // cout << "temp: "<< tag1 << " " << tag2 << " " << temp.frame_start <<
+                        // " " << temp.frame_stop << " " << temp.time_start << " " << temp.time_stop <<
+                        // " " << temp.box << " " << temp.x1 << " " << temp.y1 << " " << temp.a1 <<
+                        // " " << temp.x2 << " " << temp.y2 << " " << temp.a2 <<
+                        // " " << temp.direction << " " << temp.det << endl;
+                        // cout<<"read: "<< s << endl;
+
+                        // find index of each tag
+                        int idx1 (-1);
+                        int idx2 (-1);
+                        if (!find_idx(tag1, idx1)) {
+                                stringstream ss;
+                                ss << tag1;
+                                string info = ss.str();
+                                cerr << "TAG_NOT_FOUND" << info << endl;
+                        }
+                        if (!find_idx(tag2, idx2)) {
+                                stringstream ss;
+                                ss << tag2;
+                                string info = ss.str();
+                                cerr << "TAG_NOT_FOUND" << info << endl;
+                        }
+
+                        // add interaction to list (matrix is symmetric)
+                        i_table[idx1][idx2].push_back(temp);
+                        i_table[idx2][idx1].push_back(temp);
+                }
+        }
+        f.close();
+}
 
 int main(int argc, char** argv ) {
         CommandLineParser parser(argc, argv, params);
         parser.about("Program to highlight tracking video with tracking data (.tags and .dat files)");
         if (parser.has("help") || !parser.has("fDat") || !parser.has("fTags") || !parser.has("trkVid")) {
-                cout << CV_MAJOR_VERSION << " " << CV_MINOR_VERSION << endl;
                 parser.printMessage();
                 return 1;
         }
@@ -42,9 +179,9 @@ int main(int argc, char** argv ) {
 
         VideoWriter outputVid;
         #if CV_MAJOR_VERSION >= 4
-                int codec = outputVid.fourcc('D', 'I', 'V', '3');
+        int codec = outputVid.fourcc('D', 'I', 'V', '3');
         #else
-                int odec = CV_FOURCC('D', 'I', 'V', '3');
+        int codec = CV_FOURCC('D', 'I', 'V', '3');
         #endif
         outputVid.open("result.avi", codec, capture.get(CAP_PROP_FPS), Size((int)capture.get(CAP_PROP_FRAME_WIDTH), (int)capture.get(CAP_PROP_FRAME_HEIGHT)), true);
         if (!outputVid.isOpened()) {
@@ -76,6 +213,17 @@ int main(int argc, char** argv ) {
                 }
         }
 
+        vector <vector <interactions> > i_table;
+        i_table.resize(tag_count);
+        for (int i = 0; i < tag_count; i++) {
+                i_table[i].resize(tag_count);
+        }
+        bool interactions = false;
+        if (parser.has("fInteract")) {
+                interactions = true;
+                read_interaction_file(parser.get<string>("fInteract"), i_table);
+        }
+
         framerec datFrame;
         deque<framerec> qDatFrames;
         Mat vidFrame;
@@ -89,7 +237,9 @@ int main(int argc, char** argv ) {
         int queenId = 665;
         double hil = 5.0; // Heading indicator length
 
-        namedWindow("Current frame", WINDOW_AUTOSIZE);
+        if (parser.has("show")) {
+                namedWindow("Current frame", WINDOW_AUTOSIZE);
+        }
         do {
                 if (datFrame.frame > 964970) {
                         capture >> vidFrame;
@@ -116,7 +266,7 @@ int main(int argc, char** argv ) {
                                                         xHead = (double)qDatFrames.at(i).tags[tagNo].x * scH;
                                                         yHead = (double)qDatFrames.at(i).tags[tagNo].y * scW;
                                                         if (xTail > -1.0) {
-                                                                line(vidFrame, Point(xHead, yHead), Point(xTail, yTail), Scalar(255, 255, 0), 1, LINE_8);
+                                                                line(vidFrame, Point(xHead, yHead), Point(xTail, yTail), Scalar(255,255,0), 1, LINE_8);
                                                         }
                                                 }
                                         }
@@ -138,9 +288,28 @@ int main(int argc, char** argv ) {
                                         line(vidFrame, Point(x, y), Point(x + hil * cos((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0), y + hil * sin((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0)), Scalar(255, 0, 0), 1, LINE_8);
                                 }
                         }
+
+                        if (interactions) {
+                                for (int i = 0; i < tag_count - 1; i++) {
+                                        for (int j = i + 1; j < tag_count; j++) {
+                                                if (!i_table[i][j].empty()) {
+                                                        vector<data>::iterator it = i_table[i][j].begin();
+                                                        while(it != i_table[i][j].end()) {
+                                                                if (it->frame_start <= datFrame.frame && it->frame_stop >= datFrame.frame) {
+                                                                        line(vidFrame, Point(it->x1 * scH, it->y1 * scW), Point(it->x2 * scH, it->y2 * scW), Scalar(0,215,255), 1, LINE_8);
+                                                                }
+                                                                it++;
+                                                        }
+                                                }
+                                        }
+                                }
+                        }
+
                         outputVid << vidFrame;
-                        imshow("Current frame", vidFrame);
-                        waitKey(10);
+                        if (parser.has("show")) {
+                                imshow("Current frame", vidFrame);
+                                waitKey(1);
+                        }
                 }
 
         } while (!vidFrame.empty() && fdat.read_frame(datFrame));
