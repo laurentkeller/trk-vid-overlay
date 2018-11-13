@@ -10,8 +10,8 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/video.hpp>
 
-#include "utils/tags3.h"
-#include "utils/datfile.h"
+#include "tpppl/tags3.h"
+#include "tpppl/datfile.h"
 
 using namespace cv;
 using namespace std;
@@ -29,6 +29,7 @@ int main(int argc, char** argv ) {
         CommandLineParser parser(argc, argv, params);
         parser.about("Program to highlight tracking video with tracking data (.tags and .dat files)");
         if (parser.has("help") || !parser.has("fDat") || !parser.has("fTags") || !parser.has("trkVid")) {
+                cout << CV_MAJOR_VERSION << " " << CV_MINOR_VERSION << endl;
                 parser.printMessage();
                 return 1;
         }
@@ -40,7 +41,12 @@ int main(int argc, char** argv ) {
         }
 
         VideoWriter outputVid;
-        outputVid.open("result.avi", CV_FOURCC('D', 'I', 'V', '3'), capture.get(CAP_PROP_FPS), Size((int)capture.get(CAP_PROP_FRAME_WIDTH), (int)capture.get(CAP_PROP_FRAME_HEIGHT)), true);
+        #if CV_MAJOR_VERSION >= 4
+                int codec = outputVid.fourcc('D', 'I', 'V', '3');
+        #else
+                int odec = CV_FOURCC('D', 'I', 'V', '3');
+        #endif
+        outputVid.open("result.avi", codec, capture.get(CAP_PROP_FPS), Size((int)capture.get(CAP_PROP_FRAME_WIDTH), (int)capture.get(CAP_PROP_FRAME_HEIGHT)), true);
         if (!outputVid.isOpened()) {
                 cout << "Could not open the output video for write" << endl;
                 return -1;
