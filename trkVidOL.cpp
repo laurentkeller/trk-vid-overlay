@@ -13,6 +13,8 @@
 #include "tpppl/tags3.h"
 #include "tpppl/datfile.h"
 
+#include "numPatterns.hpp"
+
 using namespace cv;
 using namespace std;
 
@@ -42,9 +44,9 @@ int main(int argc, char** argv ) {
 
         VideoWriter outputVid;
         #if CV_MAJOR_VERSION >= 4
-                int codec = outputVid.fourcc('D', 'I', 'V', '3');
+        int codec = outputVid.fourcc('D', 'I', 'V', '3');
         #else
-                int odec = CV_FOURCC('D', 'I', 'V', '3');
+        int codec = CV_FOURCC('D', 'I', 'V', '3');
         #endif
         outputVid.open("result.avi", codec, capture.get(CAP_PROP_FPS), Size((int)capture.get(CAP_PROP_FRAME_WIDTH), (int)capture.get(CAP_PROP_FRAME_HEIGHT)), true);
         if (!outputVid.isOpened()) {
@@ -90,6 +92,15 @@ int main(int argc, char** argv ) {
         double hil = 5.0; // Heading indicator length
 
         namedWindow("Current frame", WINDOW_AUTOSIZE);
+        namedWindow("roi1", WINDOW_AUTOSIZE);
+        namedWindow("roi2", WINDOW_AUTOSIZE);
+        namedWindow("roi3", WINDOW_AUTOSIZE);
+        namedWindow("roi4", WINDOW_AUTOSIZE);
+        namedWindow("roi5", WINDOW_AUTOSIZE);
+        namedWindow("roi6", WINDOW_AUTOSIZE);
+        namedWindow("roi7", WINDOW_AUTOSIZE);
+        namedWindow("roi8", WINDOW_AUTOSIZE);
+
         do {
                 if (datFrame.frame > 964970) {
                         capture >> vidFrame;
@@ -138,9 +149,47 @@ int main(int argc, char** argv ) {
                                         line(vidFrame, Point(x, y), Point(x + hil * cos((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0), y + hil * sin((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0)), Scalar(255, 0, 0), 1, LINE_8);
                                 }
                         }
+                        Rect roi_tot = Rect(53, 2, 73, 10);
+                        Mat image_roi = vidFrame(roi_tot);
+                        Mat roi[8];
+                        int len = 9;
+                        int xOffset = 54;
+                        int yOffset = 2;
+                        int width = 7;
+                        int height = 10;
+                        for (int i = 0; i < 8; i++) {
+                                roi[i] = vidFrame(Rect(xOffset + i * len, yOffset, width, height));
+                        }
+
                         outputVid << vidFrame;
-                        imshow("Current frame", vidFrame);
-                        waitKey(10);
+                        imshow("Current frame", image_roi);
+                        imshow("roi1", roi[0]);
+                        imshow("roi2", roi[1]);
+                        imshow("roi3", roi[2]);
+                        imshow("roi4", roi[3]);
+                        imshow("roi5", roi[4]);
+                        imshow("roi6", roi[5]);
+                        imshow("roi7", roi[6]);
+                        imshow("roi8", roi[7]);
+
+                        double worb[width * height];
+                        for (int j = yOffset; j < yOffset + 10; j++) {
+                          bool isNum[10] = {false,false,false,false,false,false,false,false,false,false};
+                                for (int i = 3 * xOffset; i < 3 * xOffset + 8 * len * 3; i++) {
+                                        Scalar colour = vidFrame.at<uchar>(j, i);
+                                        if (colour[0] == 255) {
+                                                cout << 1 << ", ";
+
+                                        } else if (colour[0] == 0) {
+                                                cout << "0" << ", ";
+
+                                        } else {
+                                                cout << 5 << ", ";
+                                        }
+                                }
+                                cout << endl;
+                        }
+                        waitKey(1000);
                 }
 
         } while (!vidFrame.empty() && fdat.read_frame(datFrame));
