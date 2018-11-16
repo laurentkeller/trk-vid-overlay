@@ -241,6 +241,14 @@ int main(int argc, char** argv ) {
 
         if (parser.has("show")) {
                 namedWindow("Current frame", WINDOW_AUTOSIZE);
+                namedWindow("roi1", WINDOW_AUTOSIZE);
+                namedWindow("roi2", WINDOW_AUTOSIZE);
+                namedWindow("roi3", WINDOW_AUTOSIZE);
+                namedWindow("roi4", WINDOW_AUTOSIZE);
+                namedWindow("roi5", WINDOW_AUTOSIZE);
+                namedWindow("roi6", WINDOW_AUTOSIZE);
+                namedWindow("roi7", WINDOW_AUTOSIZE);
+                namedWindow("roi8", WINDOW_AUTOSIZE);
         }
         do {
                 if (datFrame.frame > 964970) {
@@ -309,8 +317,49 @@ int main(int argc, char** argv ) {
 
                         outputVid << vidFrame;
                         if (parser.has("show")) {
+
+                                Rect roi_tot = Rect(53, 2, 73, 10);
+                                Mat image_roi = vidFrame(roi_tot);
+                                Mat roi[8];
+                                int len = 9;
+                                int xOffset = 54;
+                                int yOffset = 2;
+                                int width = 7;
+                                int height = 10;
+                                for (int i = 0; i < 8; i++) {
+                                        roi[i] = vidFrame(Rect(xOffset + i * len, yOffset, width, height));
+                                }
+
+                                outputVid << vidFrame;
+                                imshow("Current frame", image_roi);
+                                imshow("roi1", roi[0]);
+                                imshow("roi2", roi[1]);
+                                imshow("roi3", roi[2]);
+                                imshow("roi4", roi[3]);
+                                imshow("roi5", roi[4]);
+                                imshow("roi6", roi[5]);
+                                imshow("roi7", roi[6]);
+                                imshow("roi8", roi[7]);
+
+                                double worb[width * height];
+                                for (int j = yOffset; j < yOffset + 10; j++) {
+                                        bool isNum[10] = {false,false,false,false,false,false,false,false,false,false};
+                                        for (int i = 3 * xOffset; i < 3 * xOffset + 8 * len * 3; i++) {
+                                                Scalar colour = vidFrame.at<uchar>(j, i);
+                                                if (colour[0] == 255) {
+                                                        cout << 1 << ", ";
+
+                                                } else if (colour[0] == 0) {
+                                                        cout << "0" << ", ";
+
+                                                } else {
+                                                        cout << 5 << ", ";
+                                                }
+                                        }
+                                        cout << endl;
+                                }
                                 imshow("Current frame", vidFrame);
-                                waitKey(1);
+                                waitKey(1000);
                         }
                 }
 
