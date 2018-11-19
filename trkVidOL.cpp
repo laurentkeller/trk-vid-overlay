@@ -22,13 +22,21 @@ using namespace std;
 
 const int tl = 10; // Length of the trajectory printed in the video
 
-const char* params
-        = "{ help h       | | Print usage }"
-          "{ trkVid v     | | Path to a tracking video }"
-          "{ fDat d       | | Path to a .dat file }"
-          "{ fTags t      | | Path to a .tags file }"
-          "{ fInteract i  | | Path to an interaction (.txt) file }"
-          "{ show s       | | Show video preview }";
+// Extract frame number
+const int len = 9;
+const int xOffset = 54;
+const int yOffset = 2;
+const int width = 7;
+const int height = 10;
+
+const char* params =
+        "{ help h       | | Print usage }"
+        "{ trkVid v     | | Path to a tracking video }"
+        "{ fDat d       | | Path to a .dat file }"
+        "{ fTags t      | | Path to a .tags file }"
+        "{ fInteract i  | | Path to an interaction (.txt) file }"
+        "{ fVidOut vo   | | Name for outpu video file (has to be .avi) }"
+        "{ show s       | | Show video preview }";
 
 // structure of an interaction
 struct data {
@@ -134,13 +142,6 @@ void read_interaction_file(string filename, vector <vector <interactions> >& i_t
                         ss.ignore(1,',');
                         ss>>temp.det;
 
-                        // cout << "temp: "<< tag1 << " " << tag2 << " " << temp.frame_start <<
-                        // " " << temp.frame_stop << " " << temp.time_start << " " << temp.time_stop <<
-                        // " " << temp.box << " " << temp.x1 << " " << temp.y1 << " " << temp.a1 <<
-                        // " " << temp.x2 << " " << temp.y2 << " " << temp.a2 <<
-                        // " " << temp.direction << " " << temp.det << endl;
-                        // cout<<"read: "<< s << endl;
-
                         // find index of each tag
                         int idx1 (-1);
                         int idx2 (-1);
@@ -165,10 +166,44 @@ void read_interaction_file(string filename, vector <vector <interactions> >& i_t
         f.close();
 }
 
+int getVidFrame(Mat &vidFrame) {
+        uint32_t frameNo = 0;
+        for (int i = 0; i < 8; i++) { // per digit
+                uint16_t isNum = 0x3FF;
+                int vecIdx = 0;
+                for (int idx = 0; idx < len * height; idx++) { // per pixel in digit
+                        if (idx % len < width) { // ignore the filling strip on the rigth
+                                Scalar col = vidFrame.at<uchar>(idx / len + yOffset, (idx % len + len * i + xOffset) * 3);
+                                if (col[0] != zero[vecIdx*3]) isNum &= ~(0b1 << 0);
+                                if (col[0] != one[vecIdx*3]) isNum &= ~(0b1 << 1);
+                                if (col[0] != two[vecIdx*3]) isNum &= ~(0b1 << 2);
+                                if (col[0] != three[vecIdx*3]) isNum &= ~(0b1 << 3);
+                                if (col[0] != four[vecIdx*3]) isNum &= ~(0b1 << 4);
+                                if (col[0] != five[vecIdx*3]) isNum &= ~(0b1 << 5);
+                                if (col[0] != six[vecIdx*3]) isNum &= ~(0b1 << 6);
+                                if (col[0] != seven[vecIdx*3]) isNum &= ~(0b1 << 7);
+                                if (col[0] != eight[vecIdx*3]) isNum &= ~(0b1 << 8);
+                                if (col[0] != nine[vecIdx*3]) isNum &= ~(0b1 << 9);
+                                vecIdx++;
+                        }
+                }
+                if (isNum & (0b1 << 1)) frameNo += pow(10,(7-i));
+                if (isNum & (0b1 << 2)) frameNo += pow(10,(7-i)) * 2;
+                if (isNum & (0b1 << 3)) frameNo += pow(10,(7-i)) * 3;
+                if (isNum & (0b1 << 4)) frameNo += pow(10,(7-i)) * 4;
+                if (isNum & (0b1 << 5)) frameNo += pow(10,(7-i)) * 5;
+                if (isNum & (0b1 << 6)) frameNo += pow(10,(7-i)) * 6;
+                if (isNum & (0b1 << 7)) frameNo += pow(10,(7-i)) * 7;
+                if (isNum & (0b1 << 8)) frameNo += pow(10,(7-i)) * 8;
+                if (isNum & (0b1 << 9)) frameNo += pow(10,(7-i)) * 9;
+        }
+        return frameNo;
+}
+
 int main(int argc, char** argv ) {
         CommandLineParser parser(argc, argv, params);
         parser.about("Program to highlight tracking video with tracking data (.tags and .dat files)");
-        if (parser.has("help") || !parser.has("fDat") || !parser.has("fTags") || !parser.has("trkVid")) {
+        if (parser.has("help") || !parser.has("fDat") || !parser.has("fTags") || !parser.has("trkVid") || !parser.has("fVidOut")) {
                 parser.printMessage();
                 return 1;
         }
@@ -185,7 +220,7 @@ int main(int argc, char** argv ) {
         #else
         int codec = CV_FOURCC('D', 'I', 'V', '3');
         #endif
-        outputVid.open("result.avi", codec, capture.get(CAP_PROP_FPS), Size((int)capture.get(CAP_PROP_FRAME_WIDTH), (int)capture.get(CAP_PROP_FRAME_HEIGHT)), true);
+        outputVid.open(parser.get<String>("fVidOut"), codec, capture.get(CAP_PROP_FPS), Size((int)capture.get(CAP_PROP_FRAME_WIDTH), (int)capture.get(CAP_PROP_FRAME_HEIGHT)), true);
         if (!outputVid.isOpened()) {
                 cout << "Could not open the output video for write" << endl;
                 return -1;
@@ -227,143 +262,103 @@ int main(int argc, char** argv ) {
         }
 
         framerec datFrame;
+        fdat.read_frame(datFrame);
         deque<framerec> qDatFrames;
         Mat vidFrame;
 
         double scW = (capture.get(CAP_PROP_FRAME_WIDTH)) / ((double) IMAGE_WIDTH);
         double scH = (capture.get(CAP_PROP_FRAME_HEIGHT)) / ((double) IMAGE_HEIGHT);
 
-        fdat.read_frame(datFrame);
-        capture >> vidFrame;
-
         int queenId = 665;
         double hil = 5.0; // Heading indicator length
 
         if (parser.has("show")) {
                 namedWindow("Current frame", WINDOW_AUTOSIZE);
-                namedWindow("roi1", WINDOW_AUTOSIZE);
-                namedWindow("roi2", WINDOW_AUTOSIZE);
-                namedWindow("roi3", WINDOW_AUTOSIZE);
-                namedWindow("roi4", WINDOW_AUTOSIZE);
-                namedWindow("roi5", WINDOW_AUTOSIZE);
-                namedWindow("roi6", WINDOW_AUTOSIZE);
-                namedWindow("roi7", WINDOW_AUTOSIZE);
-                namedWindow("roi8", WINDOW_AUTOSIZE);
         }
+
+        cout << "start processing files" << endl;
+        int ct = 0;
         do {
-                if (datFrame.frame > 964970) {
-                        capture >> vidFrame;
-                        qDatFrames.push_front(datFrame);
-                        if (qDatFrames.size() > tl - 1) {
-                                qDatFrames.pop_back();
-                        }
-                        string frameNumb = to_string(datFrame.frame);
-                        putText(vidFrame, frameNumb, Point(0, 50), FONT_HERSHEY_SCRIPT_SIMPLEX, 1.0, Scalar(0,0,255), 2, LINE_8, false);
-                        for (int tagNo = 0; tagNo < tag_count; tagNo++) {
-                                if (datFrame.tags[tagNo].x >= 0) {
-                                        // Draw the trajectory first
-                                        double xHead = -1.0;
-                                        double xTail = -1.0;
-                                        double yHead = -1.0;
-                                        double yTail = -1.0;
-                                        for (int i = 0; i < tl; i++) {
-                                                if (i > qDatFrames.size() - 1) {
-                                                        break;
-                                                }
-                                                if (qDatFrames.at(i).tags[tagNo].x >= 0) {
-                                                        xTail = xHead;
-                                                        yTail = yHead;
-                                                        xHead = (double)qDatFrames.at(i).tags[tagNo].x * scH;
-                                                        yHead = (double)qDatFrames.at(i).tags[tagNo].y * scW;
-                                                        if (xTail > -1.0) {
-                                                                line(vidFrame, Point(xHead, yHead), Point(xTail, yTail), Scalar(255,255,0), 1, LINE_8);
-                                                        }
+                if (ct++ % 100 == 0) cout << " .";
+                if (ct % 1000 == 0) cout << endl;
+                capture >> vidFrame;
+                uint32_t frameNo = getVidFrame(vidFrame);
+                if (frameNo != datFrame.frame) {
+                        fdat.go_to_frame(frameNo);
+                        fdat.read_frame(datFrame);
+                }
+
+                qDatFrames.push_front(datFrame);
+                if (qDatFrames.size() > tl - 1) {
+                        qDatFrames.pop_back();
+                }
+                // string frameNumb = to_string(datFrame.frame);
+                string frameNumb = to_string(frameNo);
+                putText(vidFrame, frameNumb, Point(0, 50), FONT_HERSHEY_SCRIPT_SIMPLEX, 1.0, Scalar(0,0,255), 2, LINE_8, false);
+                for (int tagNo = 0; tagNo < tag_count; tagNo++) {
+                        if (datFrame.tags[tagNo].x >= 0) {
+                                // Draw the trajectory first
+                                double xHead = -1.0;
+                                double xTail = -1.0;
+                                double yHead = -1.0;
+                                double yTail = -1.0;
+                                for (int i = 0; i < tl; i++) {
+                                        if (i > qDatFrames.size() - 1) {
+                                                break;
+                                        }
+                                        if (qDatFrames.at(i).tags[tagNo].x >= 0) {
+                                                xTail = xHead;
+                                                yTail = yHead;
+                                                xHead = (double)qDatFrames.at(i).tags[tagNo].x * scH;
+                                                yHead = (double)qDatFrames.at(i).tags[tagNo].y * scW;
+                                                if (xTail > -1.0) {
+                                                        line(vidFrame, Point(xHead, yHead), Point(xTail, yTail), Scalar(255,255,0), 1, LINE_8);
                                                 }
                                         }
+                                }
 
-                                        // Now draw everything else
-                                        double x = (double)datFrame.tags[tagNo].x * scH;
-                                        double y = (double)datFrame.tags[tagNo].y * scW;
-                                        string idString = to_string(tag_list[tagNo]);
-                                        if (tag_list[tagNo] == queenId) {
-                                                circle(vidFrame, Point(x, y), 2, Scalar(0,255,255), 2);
+                                // Now draw everything else
+                                double x = (double)datFrame.tags[tagNo].x * scH;
+                                double y = (double)datFrame.tags[tagNo].y * scW;
+                                string idString = to_string(tag_list[tagNo]);
+                                if (tag_list[tagNo] == queenId) {
+                                        circle(vidFrame, Point(x, y), 2, Scalar(0,255,255), 2);
+                                } else {
+                                        if (datFrame.frame < frameOfDeath[tag_list[tagNo]]) {
+                                                circle(vidFrame, Point(x, y), 2, Scalar(0,0,255), 2);
                                         } else {
-                                                if (datFrame.frame < frameOfDeath[tag_list[tagNo]]) {
-                                                        circle(vidFrame, Point(x, y), 2, Scalar(0,0,255), 2);
-                                                } else {
-                                                        circle(vidFrame, Point(x, y), 2, Scalar(255,0,255), 2);
-                                                }
+                                                circle(vidFrame, Point(x, y), 2, Scalar(255,0,255), 2);
                                         }
-                                        putText(vidFrame, idString, Point(x + 4.0, y + 4.0), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, Scalar(0,255,0), 1, LINE_8, false);
-                                        line(vidFrame, Point(x, y), Point(x + hil * cos((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0), y + hil * sin((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0)), Scalar(255, 0, 0), 1, LINE_8);
                                 }
+                                putText(vidFrame, idString, Point(x + 4.0, y + 4.0), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, Scalar(0,255,0), 1, LINE_8, false);
+                                line(vidFrame, Point(x, y), Point(x + hil * cos((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0), y + hil * sin((double)datFrame.tags[tagNo].a * M_PI / 180.0 / 100.0)), Scalar(255, 0, 0), 1, LINE_8);
                         }
+                }
 
-                        if (interactions) {
-                                for (int i = 0; i < tag_count - 1; i++) {
-                                        for (int j = i + 1; j < tag_count; j++) {
-                                                if (!i_table[i][j].empty()) {
-                                                        vector<data>::iterator it = i_table[i][j].begin();
-                                                        while(it != i_table[i][j].end()) {
-                                                                if (it->frame_start <= datFrame.frame && it->frame_stop >= datFrame.frame) {
-                                                                        line(vidFrame, Point(it->x1 * scH, it->y1 * scW), Point(it->x2 * scH, it->y2 * scW), Scalar(0,215,255), 1, LINE_8);
-                                                                }
-                                                                it++;
+                if (interactions) {
+                        for (int i = 0; i < tag_count - 1; i++) {
+                                for (int j = i + 1; j < tag_count; j++) {
+                                        if (!i_table[i][j].empty()) {
+                                                vector<data>::iterator it = i_table[i][j].begin();
+                                                while(it != i_table[i][j].end()) {
+                                                        if (it->frame_start <= datFrame.frame && it->frame_stop >= datFrame.frame) {
+                                                                line(vidFrame, Point(it->x1 * scH, it->y1 * scW), Point(it->x2 * scH, it->y2 * scW), Scalar(0,215,255), 1, LINE_8);
                                                         }
+                                                        it++;
                                                 }
                                         }
                                 }
                         }
+                }
 
-                        outputVid << vidFrame;
-                        if (parser.has("show")) {
-
-                                Rect roi_tot = Rect(53, 2, 73, 10);
-                                Mat image_roi = vidFrame(roi_tot);
-                                Mat roi[8];
-                                int len = 9;
-                                int xOffset = 54;
-                                int yOffset = 2;
-                                int width = 7;
-                                int height = 10;
-                                for (int i = 0; i < 8; i++) {
-                                        roi[i] = vidFrame(Rect(xOffset + i * len, yOffset, width, height));
-                                }
-
-                                outputVid << vidFrame;
-                                imshow("Current frame", image_roi);
-                                imshow("roi1", roi[0]);
-                                imshow("roi2", roi[1]);
-                                imshow("roi3", roi[2]);
-                                imshow("roi4", roi[3]);
-                                imshow("roi5", roi[4]);
-                                imshow("roi6", roi[5]);
-                                imshow("roi7", roi[6]);
-                                imshow("roi8", roi[7]);
-
-                                double worb[width * height];
-                                for (int j = yOffset; j < yOffset + 10; j++) {
-                                        bool isNum[10] = {false,false,false,false,false,false,false,false,false,false};
-                                        for (int i = 3 * xOffset; i < 3 * xOffset + 8 * len * 3; i++) {
-                                                Scalar colour = vidFrame.at<uchar>(j, i);
-                                                if (colour[0] == 255) {
-                                                        cout << 1 << ", ";
-
-                                                } else if (colour[0] == 0) {
-                                                        cout << "0" << ", ";
-
-                                                } else {
-                                                        cout << 5 << ", ";
-                                                }
-                                        }
-                                        cout << endl;
-                                }
-                                imshow("Current frame", vidFrame);
-                                waitKey(1000);
-                        }
+                outputVid << vidFrame;
+                if (parser.has("show")) {
+                        imshow("Current frame", vidFrame);
+                        waitKey(1000);
                 }
 
         } while (!vidFrame.empty() && fdat.read_frame(datFrame));
 
+        cout << endl << "Video written to: " << parser.get<String>("fVidOut") << endl;
         return 0;
 }
