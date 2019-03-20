@@ -1,3 +1,0 @@
-/home/matthias/Documents/Code/tracking-video-visualizer/CMakeFiles/rebuild_cache.dir
-/home/matthias/Documents/Code/tracking-video-visualizer/CMakeFiles/trkVidOL.dir
-/home/matthias/Documents/Code/tracking-video-visualizer/CMakeFiles/edit_cache.dir
