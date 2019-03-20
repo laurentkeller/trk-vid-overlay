@@ -5,11 +5,7 @@ set (CMAKE_CXX_STANDARD 11)
 
 find_package(OpenCV REQUIRED)
 
-add_compile_definitions(ARTAG_225)
-
 include_directories(${OpenCV_INCLUDE_DIRS})
-#include_directories("/usr/local/include/tpppl/inc")
-#link_directories("/home/matthias/Documents/Code/tpppl/build/lib")
 
 add_executable(trkVidOL trkVidOL.cpp)
-target_link_libraries(trkVidOL ${OpenCV_LIBS} tpppl)
+target_link_libraries(trkVidOL ${OpenCV_LIBS} atrkutil)
