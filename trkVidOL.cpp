@@ -1,3 +1,11 @@
+/*
+ * trkVidOL.cpp
+ *
+ *  Modified by Matthias Ruegg based on a program created by Danielle Mersch.
+ *  Copyright UNIL. All rights reserved.
+ *
+ */
+
 #include <iostream>
 #include <string>
 #include <sstream>
